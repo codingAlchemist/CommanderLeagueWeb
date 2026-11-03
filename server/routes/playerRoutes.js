@@ -216,27 +216,22 @@ function getCardObjects(cards, cardTypes = {}) {
   }));
 }
 
-module.exports = {
-  DEFAULT_PLAYER_PASSWORD,
+
+function loginPlayer({
   readSignups,
   writeSignups,
   updatePlayerLookingForGame,
   readPlayersLookingForGame,
-  registerPlayerRoutes(app, {
-    readSignups,
-    writeSignups,
-    updatePlayerLookingForGame,
-    readPlayersLookingForGame,
-    DEFAULT_PLAYER_PASSWORD,
-    playerNeedsPasswordReset,
-    withDeckList,
-    getPlayerDeckList,
-    getDeckByPlayer,
-    saveDeckForPlayer,
-    readWeekState,
-    readAchievements
-  }) {
-    app.post('/api/player/login', async (req, res) => {
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { identifier, password } = req.body || {};
 
@@ -290,9 +285,25 @@ module.exports = {
         console.error('Error authenticating player:', error);
         return res.status(500).json({ error: 'Failed to authenticate player' });
       }
-    });
 
-    app.patch('/api/player/:id/password', async (req, res) => {
+  };
+}
+
+function setPlayerPassword({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { id } = req.params;
         const { password } = req.body || {};
@@ -319,9 +330,25 @@ module.exports = {
         console.error('Error setting player password:', error);
         return res.status(500).json({ error: 'Failed to save player password' });
       }
-    });
 
-    app.get('/api/player/looking-for-game', async (req, res) => {
+  };
+}
+
+function listPlayersLookingForGame({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         if (typeof readPlayersLookingForGame !== 'function') {
           return res.status(500).json({ error: 'Player lookup service is unavailable' });
@@ -333,9 +360,25 @@ module.exports = {
         console.error('Error retrieving players looking for a game:', error);
         return res.status(500).json({ error: 'Failed to retrieve players looking for a game' });
       }
-    });
 
-    app.patch('/api/player/:id/looking-for-game', async (req, res) => {
+  };
+}
+
+function updatePlayerLookingForGameRoute({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { id } = req.params;
         const { lookingForGame, commanderBracket } = req.body || {};
@@ -365,9 +408,25 @@ module.exports = {
         console.error('Error updating player looking for game status:', error);
         return res.status(500).json({ error: 'Failed to update looking for game status' });
       }
-    });
 
-    app.patch('/api/player/:id/deck', async (req, res) => {
+  };
+}
+
+function updatePlayerDeck({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { id } = req.params;
         const { cardIndex, replacementCard, replacementCardType } = req.body || {};
@@ -444,9 +503,25 @@ module.exports = {
         console.error('Error updating player deck:', error);
         return res.status(500).json({ error: 'Failed to update deck list' });
       }
-    });
 
-    app.patch('/api/player/:id/commander', async (req, res) => {
+  };
+}
+
+function updatePlayerCommander({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { id } = req.params;
         const { replacementCommander, replacementCommanderType } = req.body || {};
@@ -504,9 +579,25 @@ module.exports = {
         console.error('Error updating player commander:', error);
         return res.status(500).json({ error: 'Failed to update commander' });
       }
-    });
 
-    app.get('/api/player/:id', async (req, res) => {
+  };
+}
+
+function getPlayer({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { id } = req.params;
         const signups = await readSignups();
@@ -521,9 +612,25 @@ module.exports = {
         console.error('Error retrieving player:', error);
         return res.status(500).json({ error: 'Failed to retrieve player' });
       }
-    });
 
-    app.get('/api/player/achievements', async (req, res) => {
+  };
+}
+
+function getPlayersAchievements({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const signups = await readSignups();
         const playersWithAchievements = signups.map((player) => ({
@@ -541,9 +648,25 @@ module.exports = {
         console.error('Error retrieving player achievements:', error);
         return res.status(500).json({ error: 'Failed to retrieve player achievements' });
       }
-    });
 
-    app.post('/api/player/:id/achievements', async (req, res) => {
+  };
+}
+
+function completePlayerAchievement({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { id } = req.params;
         const { achievementId } = req.body || {};
@@ -607,13 +730,45 @@ module.exports = {
         console.error('Error completing player achievement:', error);
         return res.status(500).json({ error: 'Failed to complete achievement' });
       }
-    });
 
-    app.get('/api/players/achievements', async (req, res) => {
+  };
+}
+
+function redirectPlayersAchievements({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       return res.redirect('/api/player/achievements');
-    });
 
-    app.get('/api/player/:id/achievements', async (req, res) => {
+  };
+}
+
+function getPlayerAchievements({
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  DEFAULT_PLAYER_PASSWORD,
+  playerNeedsPasswordReset,
+  withDeckList,
+  getPlayerDeckList,
+  getDeckByPlayer,
+  saveDeckForPlayer,
+  readWeekState,
+  readAchievements,
+}) {
+  return async (req, res) => {
       try {
         const { id } = req.params;
         const signups = await readSignups();
@@ -636,8 +791,42 @@ module.exports = {
         console.error('Error retrieving player achievements:', error);
         return res.status(500).json({ error: 'Failed to retrieve player achievements' });
       }
-    });
 
-    return app;
-  }
+  };
+}
+
+function registerPlayerRoutes(app, dependencies) {
+  app.post('/api/player/login', loginPlayer(dependencies));
+  app.patch('/api/player/:id/password', setPlayerPassword(dependencies));
+  app.get('/api/player/looking-for-game', listPlayersLookingForGame(dependencies));
+  app.patch('/api/player/:id/looking-for-game', updatePlayerLookingForGameRoute(dependencies));
+  app.patch('/api/player/:id/deck', updatePlayerDeck(dependencies));
+  app.patch('/api/player/:id/commander', updatePlayerCommander(dependencies));
+  app.get('/api/player/:id', getPlayer(dependencies));
+  app.get('/api/player/achievements', getPlayersAchievements(dependencies));
+  app.post('/api/player/:id/achievements', completePlayerAchievement(dependencies));
+  app.get('/api/players/achievements', redirectPlayersAchievements(dependencies));
+  app.get('/api/player/:id/achievements', getPlayerAchievements(dependencies));
+
+  return app;
+}
+
+module.exports = {
+  DEFAULT_PLAYER_PASSWORD,
+  readSignups,
+  writeSignups,
+  updatePlayerLookingForGame,
+  readPlayersLookingForGame,
+  loginPlayer,
+  setPlayerPassword,
+  listPlayersLookingForGame,
+  updatePlayerLookingForGameRoute,
+  updatePlayerDeck,
+  updatePlayerCommander,
+  getPlayer,
+  getPlayersAchievements,
+  completePlayerAchievement,
+  redirectPlayersAchievements,
+  getPlayerAchievements,
+  registerPlayerRoutes,
 };
