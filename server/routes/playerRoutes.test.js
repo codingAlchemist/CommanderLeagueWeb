@@ -3,6 +3,40 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const { registerPlayerRoutes } = require('./playerRoutes');
 
+test('registerPlayerRoutes returns all player profiles via GET /api/players', async () => {
+  const app = express();
+  const players = [
+    { id: 'player-1', playerName: 'Alice', password: 'secret', deckList: ['Commander'] },
+    { id: 'player-2', playerName: 'Bob', password: 'secret', deckList: ['Commander', 'Sol Ring'] },
+  ];
+
+  registerPlayerRoutes(app, {
+    readSignups: async () => players,
+    withDeckList: (player) => {
+      const { password, ...safePlayer } = player;
+      return safePlayer;
+    },
+  });
+
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once('listening', resolve));
+  const port = server.address().port;
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/players`);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), [
+      { id: 'player-1', playerName: 'Alice', deckList: ['Commander'] },
+      { id: 'player-2', playerName: 'Bob', deckList: ['Commander', 'Sol Ring'] },
+    ]);
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
+  }
+});
+
 test('registerPlayerRoutes marks an achievement complete for a player via POST /api/player/:id/achievements', async () => {
   const app = express();
   app.use(express.json());

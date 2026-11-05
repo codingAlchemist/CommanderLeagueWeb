@@ -4,6 +4,26 @@ This document describes the player-related API endpoints registered by `playerRo
 
 ## Authentication and profile endpoints
 
+### `GET /api/players`
+Fetches all player profiles.
+
+Success response (200):
+```json
+[
+  {
+    "id": "player-123",
+    "playerName": "Alice",
+    "email": "alice@example.com",
+    "discordUsername": "alice",
+    "deckName": "Azorius Control",
+    "commander": "Brago, King Eternal",
+    "deckList": ["Commander", "Sol Ring", "Arcane Signet"]
+  }
+]
+```
+
+Player passwords are omitted from the response.
+
 ### `POST /api/player/login`
 Authenticates a player by email or Discord username and password.
 

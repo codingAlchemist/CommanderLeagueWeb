@@ -583,6 +583,18 @@ function updatePlayerCommander({
   };
 }
 
+function getAllPlayers({ readSignups, withDeckList }) {
+  return async (req, res) => {
+    try {
+      const signups = await readSignups();
+      return res.json(signups.map((player) => withDeckList(player)));
+    } catch (error) {
+      console.error('Error retrieving players:', error);
+      return res.status(500).json({ error: 'Failed to retrieve players' });
+    }
+  };
+}
+
 function getPlayer({
   readSignups,
   writeSignups,
@@ -802,6 +814,7 @@ function registerPlayerRoutes(app, dependencies) {
   app.patch('/api/player/:id/looking-for-game', updatePlayerLookingForGameRoute(dependencies));
   app.patch('/api/player/:id/deck', updatePlayerDeck(dependencies));
   app.patch('/api/player/:id/commander', updatePlayerCommander(dependencies));
+  app.get('/api/players', getAllPlayers(dependencies));
   app.get('/api/player/:id', getPlayer(dependencies));
   app.get('/api/player/achievements', getPlayersAchievements(dependencies));
   app.post('/api/player/:id/achievements', completePlayerAchievement(dependencies));
@@ -823,6 +836,7 @@ module.exports = {
   updatePlayerLookingForGameRoute,
   updatePlayerDeck,
   updatePlayerCommander,
+  getAllPlayers,
   getPlayer,
   getPlayersAchievements,
   completePlayerAchievement,
