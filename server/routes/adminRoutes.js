@@ -85,6 +85,265 @@ function tokensMatch(candidate, configuredToken) {
     return crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(configuredToken));
 }
 
+function getAdmins({ readAdmins: readAdminsFromDeps = readAdmins } = {}) {
+    return async (req, res) => {
+        try {
+            const admins = await readAdminsFromDeps();
+            return res.json(admins);
+        } catch (error) {
+            console.error('Error fetching admins:', error);
+            return res.status(500).json({ error: 'Failed to fetch admins' });
+        }
+    };
+}
+
+function createAdmin({
+    readAdmins: readAdminsFromDeps = readAdmins,
+    writeAdmins: writeAdminsFromDeps = writeAdmins,
+    signupToken,
+} = {}) {
+    const configuredSignupToken = typeof signupToken === 'string'
+        ? signupToken
+        : process.env.ADMIN_SIGNUP_TOKEN || '';
+
+    return async (req, res) => {
+        try {
+            const { username, password, token } = req.body || {};
+            const trimmedUsername = typeof username === 'string' ? username.trim() : '';
+            const trimmedPassword = typeof password === 'string' ? password.trim() : '';
+
+            if (!configuredSignupToken || !tokensMatch(token, configuredSignupToken)) {
+                return res.status(403).json({ error: 'A valid admin sign-up token is required' });
+            }
+
+            if (trimmedUsername === '' || trimmedPassword === '') {
+                return res.status(400).json({ error: 'Username and password are required' });
+            }
+
+            if (trimmedPassword.length < 8) {
+                return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+            }
+
+            const admins = await readAdminsFromDeps();
+            const exists = admins.some((admin) => String(admin.username || '').trim().toLowerCase() === trimmedUsername.toLowerCase());
+
+            if (exists) {
+                return res.status(409).json({ error: 'An admin with that username already exists' });
+            }
+
+            const createdAdmin = Admin.fromRequest({ username: trimmedUsername, password: trimmedPassword });
+            await writeAdminsFromDeps([...admins, createdAdmin.toJSON()]);
+
+            return res.status(201).json({
+                username: createdAdmin.username,
+                createdAt: createdAdmin.createdAt,
+            });
+        } catch (error) {
+            console.error('Error creating admin:', error);
+            return res.status(500).json({ error: 'Failed to create admin' });
+        }
+    };
+}
+
+function updateAdmin({ readAdmins: readAdminsFromDeps = readAdmins, writeAdmins: writeAdminsFromDeps = writeAdmins } = {}) {
+    return async (req, res) => {
+        try {
+            const { username: usernameParam } = req.params;
+            const { username, password } = req.body || {};
+            const normalizedParam = typeof usernameParam === 'string' ? usernameParam.trim() : '';
+            const nextUsername = typeof username === 'string' ? username.trim() : normalizedParam;
+            const nextPassword = typeof password === 'string' ? password.trim() : undefined;
+
+            if (nextUsername === '') {
+                return res.status(400).json({ error: 'Username is required' });
+            }
+
+            if (nextPassword !== undefined && nextPassword.length < 8) {
+                return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+            }
+
+            const admins = await readAdminsFromDeps();
+            const index = admins.findIndex((admin) => String(admin.username || '').trim().toLowerCase() === normalizedParam.toLowerCase());
+
+            if (index === -1) {
+                return res.status(404).json({ error: 'Admin not found' });
+            }
+
+            const existingAdmin = admins[index];
+            const updatedAdmin = Admin.fromRequest({
+                ...existingAdmin,
+                username: nextUsername,
+                password: typeof nextPassword === 'string' ? nextPassword : existingAdmin.password,
+                createdAt: existingAdmin.createdAt,
+            });
+
+            const nextAdmins = admins.map((admin, adminIndex) => (adminIndex === index ? updatedAdmin.toJSON() : admin));
+            await writeAdminsFromDeps(nextAdmins);
+
+            return res.json(updatedAdmin.toJSON());
+        } catch (error) {
+            console.error('Error updating admin:', error);
+            return res.status(500).json({ error: 'Failed to update admin' });
+        }
+    };
+}
+
+function deleteAdmin({ readAdmins: readAdminsFromDeps = readAdmins, writeAdmins: writeAdminsFromDeps = writeAdmins } = {}) {
+    return async (req, res) => {
+        try {
+            const { username } = req.params;
+            const normalizedUsername = typeof username === 'string' ? username.trim() : '';
+
+            if (normalizedUsername === '') {
+                return res.status(400).json({ error: 'Username is required' });
+            }
+
+            const admins = await readAdminsFromDeps();
+            const index = admins.findIndex((admin) => String(admin.username || '').trim().toLowerCase() === normalizedUsername.toLowerCase());
+
+            if (index === -1) {
+                return res.status(404).json({ error: 'Admin not found' });
+            }
+
+            const [deletedAdmin] = admins.splice(index, 1);
+            await writeAdminsFromDeps(admins);
+
+            return res.json({ deleted: deletedAdmin });
+        } catch (error) {
+            console.error('Error deleting admin:', error);
+            return res.status(500).json({ error: 'Failed to delete admin' });
+        }
+    };
+}
+
+function loginAdmin({ readAdmins: readAdminsFromDeps = readAdmins } = {}) {
+    return async (req, res) => {
+        const { username, password } = req.body || {};
+        const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
+        const attemptedUsername = typeof username === 'string' ? username.trim().toLowerCase() : 'invalid';
+
+        console.info('Admin login attempt', {
+            username: attemptedUsername,
+            ip: requestIp,
+            timestamp: new Date().toISOString()
+        });
+
+        if (typeof username !== 'string' || typeof password !== 'string') {
+            console.warn('Admin login rejected: missing credentials', {
+                username: attemptedUsername,
+                ip: requestIp
+            });
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
+
+        let admins;
+        try {
+            admins = await readAdminsFromDeps();
+        } catch (error) {
+            console.error('Error reading admin accounts:', error);
+            console.error('Admin login failed: credentials source unavailable', {
+                username: attemptedUsername,
+                ip: requestIp
+            });
+            return res.status(500).json({ error: 'Failed to validate admin credentials' });
+        }
+
+        const normalizedUsername = username.trim().toLowerCase();
+        const matchingAdmin = admins.find((admin) =>
+            normalizedUsername === String(admin.username || '').trim().toLowerCase()
+            && password === admin.password
+        );
+
+        if (!matchingAdmin) {
+            console.warn('Admin login rejected: invalid credentials', {
+                username: normalizedUsername,
+                ip: requestIp
+            });
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        console.info('Admin login successful', {
+            username: normalizedUsername,
+            ip: requestIp,
+            timestamp: new Date().toISOString()
+        });
+
+        return res.json({ authenticated: true, isAdmin: true });
+    };
+}
+
+function updateAdminPassword({
+    readAdminCredentials: readAdminCredentialsFromDeps = readAdminCredentials,
+    writeAdminCredentials: writeAdminCredentialsFromDeps = writeAdminCredentials,
+} = {}) {
+    return async (req, res) => {
+        const { currentPassword, newPassword } = req.body || {};
+        const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
+
+        if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+            return res.status(400).json({ error: 'Current password and new password are required' });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ error: 'New password must be at least 8 characters long' });
+        }
+
+        let adminCredentials;
+        try {
+            adminCredentials = await readAdminCredentialsFromDeps();
+        } catch (error) {
+            console.error('Error reading admin credentials:', error);
+            return res.status(500).json({ error: 'Failed to update admin password' });
+        }
+
+        if (currentPassword !== adminCredentials.password) {
+            console.warn('Admin password change rejected: incorrect current password', {
+                ip: requestIp
+            });
+            return res.status(401).json({ error: 'Current password is incorrect' });
+        }
+
+        try {
+            await writeAdminCredentialsFromDeps({ username: adminCredentials.username, password: newPassword });
+        } catch (error) {
+            console.error('Failed to save new admin password:', error);
+            return res.status(500).json({ error: 'Failed to update admin password' });
+        }
+
+        console.info('Admin password changed successfully', {
+            ip: requestIp,
+            timestamp: new Date().toISOString()
+        });
+
+        return res.json({ success: true });
+    };
+}
+
+function registerAdminRoutes(app, {
+    readAdminCredentials: readAdminCredentialsFromDeps,
+    writeAdminCredentials: writeAdminCredentialsFromDeps,
+    readAdmins: readAdminsFromDeps,
+    writeAdmins: writeAdminsFromDeps,
+    signupToken,
+} = {}) {
+    const dependencies = {
+        readAdminCredentials: readAdminCredentialsFromDeps || readAdminCredentials,
+        writeAdminCredentials: writeAdminCredentialsFromDeps || writeAdminCredentials,
+        readAdmins: readAdminsFromDeps || readAdmins,
+        writeAdmins: writeAdminsFromDeps || writeAdmins,
+        signupToken,
+    };
+
+    app.get('/api/admins', getAdmins(dependencies));
+    app.post('/api/admins', createAdmin(dependencies));
+    app.patch('/api/admins/:username', updateAdmin(dependencies));
+    app.delete('/api/admins/:username', deleteAdmin(dependencies));
+    app.post('/api/admin/login', loginAdmin(dependencies));
+    app.patch('/api/admin/password', updateAdminPassword(dependencies));
+
+    return app;
+}
+
 module.exports = {
     readAdmins,
     writeAdmins,
@@ -93,233 +352,11 @@ module.exports = {
     writeAdminCredentials,
     readAdminCredentialsFromDb,
     writeAdminCredentialsToDb,
-    registerAdminRoutes(app, {
-        readAdminCredentials: readAdminCredentialsFromDeps,
-        writeAdminCredentials: writeAdminCredentialsFromDeps,
-        readAdmins: readAdminsFromDeps,
-        writeAdmins: writeAdminsFromDeps,
-        signupToken: signupTokenFromDeps,
-    } = {}) {
-        const resolveReadAdminCredentials = readAdminCredentialsFromDeps || readAdminCredentials;
-        const resolveWriteAdminCredentials = writeAdminCredentialsFromDeps || writeAdminCredentials;
-        const resolveReadAdmins = readAdminsFromDeps || readAdmins;
-        const resolveWriteAdmins = writeAdminsFromDeps || writeAdmins;
-        const configuredSignupToken = typeof signupTokenFromDeps === 'string'
-            ? signupTokenFromDeps
-            : process.env.ADMIN_SIGNUP_TOKEN || '';
-
-        app.get('/api/admins', async (req, res) => {
-            try {
-                const admins = await resolveReadAdmins();
-                return res.json(admins);
-            } catch (error) {
-                console.error('Error fetching admins:', error);
-                return res.status(500).json({ error: 'Failed to fetch admins' });
-            }
-        });
-
-        app.post('/api/admins', async (req, res) => {
-            try {
-                const { username, password, token } = req.body || {};
-                const trimmedUsername = typeof username === 'string' ? username.trim() : '';
-                const trimmedPassword = typeof password === 'string' ? password.trim() : '';
-
-                if (!configuredSignupToken || !tokensMatch(token, configuredSignupToken)) {
-                    return res.status(403).json({ error: 'A valid admin sign-up token is required' });
-                }
-
-                if (trimmedUsername === '' || trimmedPassword === '') {
-                    return res.status(400).json({ error: 'Username and password are required' });
-                }
-
-                if (trimmedPassword.length < 8) {
-                    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
-                }
-
-                const admins = await resolveReadAdmins();
-                const exists = admins.some((admin) => String(admin.username || '').trim().toLowerCase() === trimmedUsername.toLowerCase());
-
-                if (exists) {
-                    return res.status(409).json({ error: 'An admin with that username already exists' });
-                }
-
-                const createdAdmin = Admin.fromRequest({ username: trimmedUsername, password: trimmedPassword });
-                const nextAdmins = [...admins, createdAdmin.toJSON()];
-                await resolveWriteAdmins(nextAdmins);
-
-                return res.status(201).json({
-                    username: createdAdmin.username,
-                    createdAt: createdAdmin.createdAt,
-                });
-            } catch (error) {
-                console.error('Error creating admin:', error);
-                return res.status(500).json({ error: 'Failed to create admin' });
-            }
-        });
-
-        app.patch('/api/admins/:username', async (req, res) => {
-            try {
-                const { username: usernameParam } = req.params;
-                const { username, password } = req.body || {};
-                const normalizedParam = typeof usernameParam === 'string' ? usernameParam.trim() : '';
-                const nextUsername = typeof username === 'string' ? username.trim() : normalizedParam;
-                const nextPassword = typeof password === 'string' ? password.trim() : undefined;
-
-                if (nextUsername === '') {
-                    return res.status(400).json({ error: 'Username is required' });
-                }
-
-                if (nextPassword !== undefined && nextPassword.length < 8) {
-                    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
-                }
-
-                const admins = await resolveReadAdmins();
-                const index = admins.findIndex((admin) => String(admin.username || '').trim().toLowerCase() === normalizedParam.toLowerCase());
-
-                if (index === -1) {
-                    return res.status(404).json({ error: 'Admin not found' });
-                }
-
-                const existingAdmin = admins[index];
-                const updatedAdmin = Admin.fromRequest({
-                    ...existingAdmin,
-                    username: nextUsername,
-                    password: typeof nextPassword === 'string' ? nextPassword : existingAdmin.password,
-                    createdAt: existingAdmin.createdAt,
-                });
-
-                const nextAdmins = admins.map((admin, adminIndex) => (adminIndex === index ? updatedAdmin.toJSON() : admin));
-                await resolveWriteAdmins(nextAdmins);
-
-                return res.json(updatedAdmin.toJSON());
-            } catch (error) {
-                console.error('Error updating admin:', error);
-                return res.status(500).json({ error: 'Failed to update admin' });
-            }
-        });
-
-        app.delete('/api/admins/:username', async (req, res) => {
-            try {
-                const { username } = req.params;
-                const normalizedUsername = typeof username === 'string' ? username.trim() : '';
-
-                if (normalizedUsername === '') {
-                    return res.status(400).json({ error: 'Username is required' });
-                }
-
-                const admins = await resolveReadAdmins();
-                const index = admins.findIndex((admin) => String(admin.username || '').trim().toLowerCase() === normalizedUsername.toLowerCase());
-
-                if (index === -1) {
-                    return res.status(404).json({ error: 'Admin not found' });
-                }
-
-                const [deletedAdmin] = admins.splice(index, 1);
-                await resolveWriteAdmins(admins);
-
-                return res.json({ deleted: deletedAdmin });
-            } catch (error) {
-                console.error('Error deleting admin:', error);
-                return res.status(500).json({ error: 'Failed to delete admin' });
-            }
-        });
-
-        app.post('/api/admin/login', async (req, res) => {
-            const { username, password } = req.body || {};
-            const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-            const attemptedUsername = typeof username === 'string' ? username.trim().toLowerCase() : 'invalid';
-
-            console.info('Admin login attempt', {
-                username: attemptedUsername,
-                ip: requestIp,
-                timestamp: new Date().toISOString()
-            });
-
-            if (typeof username !== 'string' || typeof password !== 'string') {
-                console.warn('Admin login rejected: missing credentials', {
-                    username: attemptedUsername,
-                    ip: requestIp
-                });
-                return res.status(400).json({ error: 'Username and password are required' });
-            }
-
-            let admins;
-            try {
-                admins = await resolveReadAdmins();
-            } catch (error) {
-                console.error('Error reading admin accounts:', error);
-                console.error('Admin login failed: credentials source unavailable', {
-                    username: attemptedUsername,
-                    ip: requestIp
-                });
-                return res.status(500).json({ error: 'Failed to validate admin credentials' });
-            }
-
-            const normalizedUsername = username.trim().toLowerCase();
-            const matchingAdmin = admins.find((admin) =>
-                normalizedUsername === String(admin.username || '').trim().toLowerCase()
-                && password === admin.password
-            );
-
-            if (!matchingAdmin) {
-                console.warn('Admin login rejected: invalid credentials', {
-                    username: normalizedUsername,
-                    ip: requestIp
-                });
-                return res.status(401).json({ error: 'Invalid credentials' });
-            }
-
-            console.info('Admin login successful', {
-                username: normalizedUsername,
-                ip: requestIp,
-                timestamp: new Date().toISOString()
-            });
-
-            return res.json({ authenticated: true, isAdmin: true });
-        });
-
-        app.patch('/api/admin/password', async (req, res) => {
-            const { currentPassword, newPassword } = req.body || {};
-            const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-
-            if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
-                return res.status(400).json({ error: 'Current password and new password are required' });
-            }
-
-            if (newPassword.length < 8) {
-                return res.status(400).json({ error: 'New password must be at least 8 characters long' });
-            }
-
-            let adminCredentials;
-            try {
-                adminCredentials = await resolveReadAdminCredentials();
-            } catch (error) {
-                console.error('Error reading admin credentials:', error);
-                return res.status(500).json({ error: 'Failed to update admin password' });
-            }
-
-            if (currentPassword !== adminCredentials.password) {
-                console.warn('Admin password change rejected: incorrect current password', {
-                    ip: requestIp
-                });
-                return res.status(401).json({ error: 'Current password is incorrect' });
-            }
-
-            try {
-                await resolveWriteAdminCredentials({ username: adminCredentials.username, password: newPassword });
-            } catch (error) {
-                console.error('Failed to save new admin password:', error);
-                return res.status(500).json({ error: 'Failed to update admin password' });
-            }
-
-            console.info('Admin password changed successfully', {
-                ip: requestIp,
-                timestamp: new Date().toISOString()
-            });
-
-            return res.json({ success: true });
-        });
-
-        return app;
-    }
+    getAdmins,
+    createAdmin,
+    updateAdmin,
+    deleteAdmin,
+    loginAdmin,
+    updateAdminPassword,
+    registerAdminRoutes,
 };
